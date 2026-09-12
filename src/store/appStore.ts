@@ -650,7 +650,7 @@ export const useAppStore = create<AppState>((set, get) => {
       hits += 1
     }
     let shotsLeft = session.payload.shotsLeft - 1
-    let turn = session.turn
+    let turn: 'me' | 'them' = session.turn
     let status: GameSession['status'] = 'active'
     let series = session.series
     let winner: 0 | 1 | 2 = 0
@@ -692,7 +692,7 @@ export const useAppStore = create<AppState>((set, get) => {
       session.status === 'complete'
     )
       return
-    let turn = session.turn
+    let turn: 'me' | 'them' = session.turn
     let status: GameSession['status'] = 'active'
     let series = session.series
     let send = false
