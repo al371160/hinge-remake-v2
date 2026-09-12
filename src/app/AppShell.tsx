@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { GameSendSheet } from '../components/GameSendSheet'
 import { GameOverlay } from '../games/GameOverlay'
 import { PhoneFrame } from '../components/PhoneFrame'
 import { TabBar } from '../components/TabBar'
@@ -26,7 +27,7 @@ export function AppShell() {
 
   return (
     <PhoneFrame>
-      <div className="flex h-full flex-col pt-11">
+      <div className="relative flex h-full flex-col pt-11">
         <div className="relative min-h-0 flex-1">
           <Routes>
             <Route path="/" element={<Discover />} />
@@ -43,10 +44,11 @@ export function AppShell() {
             <Route path="/you/dates" element={<DatesLog />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-          <GameOverlay />
           <Toast />
         </div>
         {!hideTab && <TabBar />}
+        <GameOverlay />
+        <GameSendSheet />
       </div>
     </PhoneFrame>
   )

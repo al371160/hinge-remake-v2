@@ -11,6 +11,7 @@ export function Standouts() {
   const profile = useAppStore((s) => (id ? s.profileById(id) : undefined))
   const skip = useAppStore((s) => s.skipStandout)
   const openSheet = useAppStore((s) => s.openSheet)
+  const beginDraftGame = useAppStore((s) => s.beginDraftGame)
 
   return (
     <div className="relative flex h-full flex-col bg-canvas">
@@ -58,10 +59,8 @@ export function Standouts() {
               })
             }
             onLikeGame={(gameId) =>
-              openSheet({
+              beginDraftGame({
                 profileId: profile.id,
-                targetType: 'game',
-                targetId: gameId,
                 gameId: gameId as GameId,
                 roseOnly: true,
               })

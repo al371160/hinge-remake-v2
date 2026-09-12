@@ -34,6 +34,7 @@ import type {
   LikeTarget,
   Preferences,
   Profile,
+  QueuedGame,
   Thread,
   WordHuntPayload,
 } from '../types'
@@ -117,6 +118,8 @@ interface AppState {
   sessions: Record<string, GameSession>
   sheet: LikeTarget | null
   overlaySessionId: string | null
+  queuedGame: QueuedGame | null
+  draftContext: { profileId: string; threadId?: string; roseOnly?: boolean } | null
   typingByThread: Record<string, boolean>
   roses: number
   preferences: Preferences
@@ -134,6 +137,14 @@ interface AppState {
   matchIncoming: (likeId: string, play: boolean) => string | null
   sendMessage: (threadId: string, text: string) => void
   startGame: (threadId: string, gameId: GameId) => string
+  beginDraftGame: (opts: {
+    gameId: GameId
+    profileId: string
+    threadId?: string
+    roseOnly?: boolean
+  }) => string
+  sendQueuedGame: (comment?: string) => void
+  clearQueuedGame: () => void
   rematch: (sessionId: string) => string
   openOverlay: (sessionId: string) => void
   closeOverlay: () => void
@@ -276,6 +287,37 @@ export const useAppStore = create<AppState>((set, get) => {
     }
   }
 
+  const queueDraft = (session: GameSession, patch: Partial<GameSession>) => {
+    const ctx = get().draftContext
+    const next: GameSession = {
+      ...session,
+      ...patch,
+      draft: true,
+      turn: patch.turn ?? 'them',
+      status: patch.status ?? 'active',
+    }
+    set({
+      sessions: { ...get().sessions, [session.id]: next },
+      overlaySessionId: null,
+      queuedGame: ctx
+        ? {
+            sessionId: session.id,
+            profileId: ctx.profileId,
+            threadId: ctx.threadId,
+            gameId: session.gameId,
+            payload: clonePayload(next.payload),
+            roseOnly: ctx.roseOnly,
+          }
+        : null,
+    })
+  }
+
+  const dropSession = (sessionId: string) => {
+    const sessions = { ...get().sessions }
+    delete sessions[sessionId]
+    return sessions
+  }
+
   const scheduleReply = (sessionId: string) => {
     clearReply(sessionId)
     const t = window.setTimeout(() => {
@@ -377,6 +419,8 @@ export const useAppStore = create<AppState>((set, get) => {
   sessions: { [jordanSession.id]: jordanSession },
   sheet: null,
   overlaySessionId: null,
+  queuedGame: null,
+  draftContext: null,
   typingByThread: {},
   roses: 1,
   preferences: {
@@ -565,21 +609,135 @@ export const useAppStore = create<AppState>((set, get) => {
     return session.id
   },
 
+  beginDraftGame: ({ gameId, profileId, threadId, roseOnly }) => {
+    const leftover = Object.values(get().sessions).filter(
+      (s) => s.draft && get().queuedGame?.sessionId !== s.id,
+    )
+    const sessions = { ...get().sessions }
+    leftover.forEach((s) => {
+      delete sessions[s.id]
+    })
+    const session: GameSession = {
+      id: uid('game'),
+      threadId: threadId ?? '',
+      gameId,
+      status: 'pending',
+      turn: 'me',
+      series: { me: 0, them: 0 },
+      payload: freshPayload(gameId),
+      draft: true,
+    }
+    set({
+      sessions: { ...sessions, [session.id]: session },
+      overlaySessionId: session.id,
+      draftContext: { profileId, threadId, roseOnly },
+      queuedGame: null,
+    })
+    return session.id
+  },
+
+  sendQueuedGame: (comment) => {
+    const queued = get().queuedGame
+    if (!queued) return
+    const note = comment?.trim() ?? ''
+    if (!queued.threadId) {
+      const roses = queued.roseOnly ? Math.max(0, get().roses - 1) : get().roses
+      set({
+        sessions: dropSession(queued.sessionId),
+        queuedGame: null,
+        draftContext: null,
+        discoverIds: get().discoverIds.filter((id) => id !== queued.profileId),
+        standoutIds: get().standoutIds.filter((id) => id !== queued.profileId),
+        roses,
+        toast: queued.roseOnly ? 'Rose sent' : 'Invite sent',
+      })
+      return
+    }
+    const session = get().sessions[queued.sessionId]
+    if (!session) return
+    const next: GameSession = {
+      ...session,
+      draft: false,
+      threadId: queued.threadId,
+      payload: queued.payload,
+      turn: session.status === 'complete' ? session.turn : 'them',
+      status: session.status === 'complete' ? 'complete' : 'active',
+    }
+    const extra: Message[] = note
+      ? [{ id: uid('msg'), fromId: 'you', text: note, createdAt: Date.now() }]
+      : []
+    set({
+      sessions: { ...get().sessions, [session.id]: next },
+      queuedGame: null,
+      draftContext: null,
+      overlaySessionId: null,
+      threads: get().threads.map((t) =>
+        t.id === queued.threadId
+          ? {
+              ...t,
+              gameSessionId: session.id,
+              lastActivity: Date.now(),
+              messages: [
+                ...t.messages,
+                {
+                  id: uid('msg'),
+                  fromId: 'you',
+                  gameSessionId: session.id,
+                  gameSnapshot: clonePayload(queued.payload),
+                  createdAt: Date.now(),
+                },
+                ...extra,
+              ],
+            }
+          : t,
+      ),
+    })
+    if (next.status !== 'complete' && next.turn === 'them') scheduleReply(session.id)
+    if (note) scheduleTextReply(queued.threadId, note)
+  },
+
+  clearQueuedGame: () => {
+    const queued = get().queuedGame
+    set({
+      queuedGame: null,
+      draftContext: null,
+      overlaySessionId: null,
+      sessions: queued ? dropSession(queued.sessionId) : get().sessions,
+    })
+  },
+
   rematch: (sessionId) => {
     const prev = get().sessions[sessionId]
     if (!prev) return sessionId
-    return get().startGame(prev.threadId, prev.gameId)
+    const thread = get().threads.find((t) => t.id === prev.threadId)
+    return get().beginDraftGame({
+      gameId: prev.gameId,
+      profileId: thread?.profileId ?? '',
+      threadId: prev.threadId,
+    })
   },
 
   openOverlay: (sessionId) => set({ overlaySessionId: sessionId }),
   closeOverlay: () => {
     const id = get().overlaySessionId
     const session = id ? get().sessions[id] : undefined
+    if (session?.draft) {
+      if (get().queuedGame?.sessionId === session.id) {
+        set({ overlaySessionId: null })
+        return
+      }
+      set({
+        overlaySessionId: null,
+        draftContext: get().queuedGame ? get().draftContext : null,
+        sessions: dropSession(session.id),
+      })
+      return
+    }
     if (session) {
       const hasMsg = get().threads.some((t) =>
         t.messages.some((m) => m.gameSessionId === session.id),
       )
-      if (!hasMsg) {
+      if (!hasMsg && session.threadId) {
         set({
           overlaySessionId: null,
           threads: postGameMessage(session.threadId, 'you', session.id, session.payload),
@@ -604,6 +762,10 @@ export const useAppStore = create<AppState>((set, get) => {
       myWords: words,
       myScore: score,
       myPlayed: true,
+    }
+    if (session.draft) {
+      queueDraft(session, { payload, status: 'active', turn: 'them' })
+      return
     }
     commitTurn(session, { payload, status: 'active', turn: 'them' }, 'you', true, true)
   },
@@ -631,6 +793,10 @@ export const useAppStore = create<AppState>((set, get) => {
       status = 'complete'
     }
     const payload: FourInARowPayload = { kind: 'fourInARow', cells: dropped.cells, winner }
+    if (session.draft) {
+      queueDraft(session, { payload, turn, status, series })
+      return
+    }
     commitTurn(session, { payload, turn, status, series }, 'you', true, true)
   },
 
@@ -680,6 +846,10 @@ export const useAppStore = create<AppState>((set, get) => {
       hitsThisTurn: hits,
       winner,
     }
+    if (session.draft) {
+      queueDraft(session, { payload, turn: 'them', status, series })
+      return
+    }
     commitTurn(session, { payload, turn, status, series }, 'you', send, send)
   },
 
@@ -707,6 +877,15 @@ export const useAppStore = create<AppState>((set, get) => {
     } else if (next.winner === 0 && !keepTurn) {
       turn = 'them'
       send = true
+    }
+    if (session.draft) {
+      queueDraft(session, {
+        payload: next,
+        turn: status === 'complete' ? turn : 'them',
+        status,
+        series,
+      })
+      return
     }
     commitTurn(session, { payload: next, turn, status, series }, 'you', send, send)
   },

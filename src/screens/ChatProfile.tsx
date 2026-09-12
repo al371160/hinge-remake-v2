@@ -1,15 +1,23 @@
 import { ChevronLeft } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ProfileStack } from '../components/ProfileStack'
 import { useAppStore } from '../store/appStore'
 import type { GameId } from '../types'
 
 export function ChatProfile() {
   const { threadId } = useParams()
+  const navigate = useNavigate()
   const thread = useAppStore((s) => s.threads.find((t) => t.id === threadId))
   const profile = useAppStore((s) => (thread ? s.profileById(thread.profileId) : undefined))
-  const startGame = useAppStore((s) => s.startGame)
-  const openOverlay = useAppStore((s) => s.openOverlay)
+  const queued = useAppStore((s) => s.queuedGame)
+  const beginDraftGame = useAppStore((s) => s.beginDraftGame)
+
+  useEffect(() => {
+    if (queued?.threadId && queued.threadId === thread?.id) {
+      navigate(`/matches/${thread.id}`, { replace: true })
+    }
+  }, [queued, thread, navigate])
 
   if (!thread || !profile) return null
 
@@ -25,8 +33,11 @@ export function ChatProfile() {
         <ProfileStack
           profile={profile}
           onLikeGame={(gameId) => {
-            const id = startGame(thread.id, gameId as GameId)
-            openOverlay(id)
+            beginDraftGame({
+              profileId: profile.id,
+              gameId: gameId as GameId,
+              threadId: thread.id,
+            })
           }}
         />
       </div>

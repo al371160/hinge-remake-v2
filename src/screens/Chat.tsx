@@ -2,8 +2,8 @@ import { ChevronLeft, ClipboardList, LayoutGrid } from 'lucide-react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { ChatPin } from '../components/ChatPin'
 import { GameBubble } from '../components/GameBubble'
+import { GameQueueCard } from '../components/GameQueueCard'
 import { GameTile } from '../components/GameTile'
 import { TypingDots } from '../components/TypingDots'
 import { GAME_IDS, GAME_META } from '../data/games'
@@ -18,8 +18,10 @@ export function Chat() {
   const sessions = useAppStore((s) => s.sessions)
   const typing = useAppStore((s) => (threadId ? Boolean(s.typingByThread[threadId]) : false))
   const sendMessage = useAppStore((s) => s.sendMessage)
-  const startGame = useAppStore((s) => s.startGame)
-  const openOverlay = useAppStore((s) => s.openOverlay)
+  const beginDraftGame = useAppStore((s) => s.beginDraftGame)
+  const sendQueuedGame = useAppStore((s) => s.sendQueuedGame)
+  const clearQueuedGame = useAppStore((s) => s.clearQueuedGame)
+  const queued = useAppStore((s) => s.queuedGame)
   const reduceMotion = useReducedMotion()
   const [text, setText] = useState('')
   const [tray, setTray] = useState(false)
@@ -45,19 +47,29 @@ export function Chat() {
     )
   }
 
+  const queuedHere = queued?.threadId === thread.id
+
   const send = () => {
+    if (queuedHere) {
+      sendQueuedGame(text)
+      setText('')
+      return
+    }
     sendMessage(thread.id, text)
     setText('')
   }
 
   const launch = (gameId: GameId) => {
-    const id = startGame(thread.id, gameId)
+    beginDraftGame({
+      gameId,
+      profileId: profile.id,
+      threadId: thread.id,
+    })
     setTray(false)
-    openOverlay(id)
   }
 
   const latestGameMsg = [...thread.messages].reverse().find((m) => m.gameSessionId)?.id
-  const canSend = Boolean(text.trim())
+  const canSend = Boolean(text.trim()) || queuedHere
 
   return (
     <div className="flex h-full flex-col bg-[#efeae2]">
@@ -76,7 +88,6 @@ export function Chat() {
           <ClipboardList className="h-5 w-5" strokeWidth={2.2} />
         </Link>
       </header>
-      <ChatPin like={thread.like} profile={profile} />
 
       <div
         ref={scroller}
@@ -110,6 +121,12 @@ export function Chat() {
         </AnimatePresence>
       </div>
 
+      {queuedHere && queued && (
+        <div className="px-3 pb-1">
+          <GameQueueCard queued={queued} onDismiss={clearQueuedGame} />
+        </div>
+      )}
+
       {tray && (
         <div className="grid grid-cols-4 gap-3 border-t border-black/6 bg-canvas px-4 py-3">
           {GAME_IDS.map((id) => (
@@ -142,7 +159,7 @@ export function Chat() {
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Message"
+          placeholder={queuedHere ? 'Add a comment or send' : 'Message'}
           className="type-user h-11 min-w-0 flex-1 rounded-full bg-[#e5e5ea] px-4 outline-none placeholder:font-ui placeholder:text-[13px] placeholder:text-stone/50"
         />
         <div className="relative grid h-9 w-9 shrink-0 place-items-center">

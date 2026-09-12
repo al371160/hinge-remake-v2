@@ -163,6 +163,22 @@ export interface GameSession {
   turn: Turn
   series: { me: number; them: number }
   payload: GamePayload
+  draft?: boolean
+}
+
+export interface QueuedGame {
+  sessionId: string
+  profileId: string
+  threadId?: string
+  gameId: GameId
+  payload: GamePayload
+  roseOnly?: boolean
+}
+
+export interface DraftContext {
+  profileId: string
+  threadId?: string
+  roseOnly?: boolean
 }
 
 export interface Thread {

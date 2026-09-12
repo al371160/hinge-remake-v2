@@ -14,6 +14,7 @@ export function Discover() {
   const undoSkip = useAppStore((s) => s.undoSkip)
   const canUndo = useAppStore((s) => s.skipped.length > 0)
   const openSheet = useAppStore((s) => s.openSheet)
+  const beginDraftGame = useAppStore((s) => s.beginDraftGame)
 
   const profile = discoverIds
     .map((id) => profileById(id))
@@ -58,10 +59,8 @@ export function Discover() {
               })
             }
             onLikeGame={(gameId) =>
-              openSheet({
+              beginDraftGame({
                 profileId: profile.id,
-                targetType: 'game',
-                targetId: gameId,
                 gameId: gameId as GameId,
               })
             }

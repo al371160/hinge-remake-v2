@@ -12,7 +12,7 @@ export const GAME_META: Record<GameId, { name: string; short: string; blurb: str
     blurb: 'Same 4×4. Eighty seconds.',
   },
   fourInARow: {
-    name: '4 in a Row',
+    name: 'Four in a Row',
     short: '4 in a Row',
     blurb: 'Drop a disc. Wait.',
   },
